@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Copyright (C) 2024 cibo
-This file is part of TSar <https://github.com/cubicibo/TSar>.
+Copyright (C) 2026 cibo
+This file is part of BluFlow <https://github.com/cubicibo/BluFlow>.
 
-TSar is free software: you can redistribute it and/or modify
+BluFlow is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
-TSar is distributed in the hope that it will be useful,
+BluFlow is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with TSar.  If not, see <http://www.gnu.org/licenses/>.
+along with BluFlow.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 from pathlib import Path
@@ -176,15 +176,15 @@ class PAFGenerator:
     def __init__(self, folder: [Path | str]) -> None:
         self._folder = Path(folder)
         assert self._folder.exists()
-        self._pids = set()
+        self._pids = dict()
 
     def add_packet(self, pid: int, packet: PESPacket, cnt: int) -> None:
         assert 0 <= pid <= 0x1FFF
 
         if pid not in self._pids:
             sequence = bytes([pid >> 8, pid & 0xFF])
-            self._pids.add(pid)
-            with open(self._folder.joinpath(f"{pid:04X}" + '.paf'), 'wb') as f:
+            self._pids[pid] = self._folder.joinpath(f"{pid:04X}" + '.paf')
+            with open(self._pids[pid], 'wb') as f:
                 f.write(sequence + b'\x00')
 
         self.append_index_file(pid, packet, cnt)
@@ -199,7 +199,7 @@ class PAFGenerator:
         temporal = __class__.encode_pts_dts(packet.pts, dts)
         assert any(temporal), "Zero PTS and DTS is illegal."
 
-        with open(self._folder.joinpath(f"{pid:04X}" + '.paf'), 'ab') as f:
+        with open(self._pids[pid], 'ab') as f:
             spatial = struct.pack(">H", cnt) + struct.pack(">I", len(packet))[1:]
             f.write((b'P' + spatial + temporal))
 
@@ -213,17 +213,78 @@ class PAFGenerator:
         payload[4:9] = struct.pack(">Q", (pts << 6) & ((1 << 39) - 1))[3:]
         payload[4] |= ((dts & 0x1) << 7)
         return payload
+
+    def get_pafs(self):
+        return self._pids
 ####
 #%%
 
-from streams import TransportStream, ArbitraryTransportStream
+    
+
+class Decoder:
+    _VPID = None
+    def __init__(self):
+        self._tb = TransportBuffer()
+
+    @classmethod
+    def suitable_for(cls, pid: int) -> bool:
+        assert cls._VPID is not None
+        if isinstance(cls._VPID, int):
+            return pid == cls._VPID
+        return pid in cls._VPID
+
+class VideoDecoder(Decoder):
+    _VPID = 0x1011
+    def __init__(self):
+        super().__init__()
+        self._mb = Buffer(40000)
+        self._eb = Buffer(3750000)
+
+class GraphicsDecoder(Decoder):
+    _VPID = list(range(0x1200, 0x1220)) + list(range(0x1400, 0x1420))
+    def __init__(self):
+        super().__init__()
+        self._tb = TransportBuffer()
+        self._eb = Buffer(1 << 20)
+
+class AudioDecoder(Decoder):
+    _VPID = range(0x1100, 0x1120)
+    def __init__(self, stream_type: int):
+        super().__init__()
+        dc = {
+            'LPCM96': (536832, 20e6), #0x80
+            'LPCM192':(1073664,30e6), #0x80 too
+            'AC3CORE':(18640,  2e6), #0x81
+            'DDPLUS': (137936, 48e6),# 0x84
+            'MLP':    (524250, 48e6),# 0x83
+            'DTS':    (43972,  5e6), #0x82
+            'DTSHD':  (713563, 48e6),# 0x85, 0x86
+            'DEXPR':  (7456,   2e6), #0xA1
+            #DTS-HD LBR unused/unsupported
+        }
+        self._eb = Buffer(self._eb[stream_type])
+
+class SystemDecoder(Decoder):
+    _VPID = [0x0000, 0x0100, 0x01FF, 0x1001] # include PCR
+    def __init__(self, stream_type: int):
+        super().__init__()
+        self._eb = Buffer(...) #1e6
+
+SupportedDecoders = [SystemDecoder, VideoDecoder, AudioDecoder, GraphicsDecoder]
+
 
 def remux(ts: TransportStream, std_model):
     dmx = Demux(ts)
     psi_packets = dmx.get_psi()
     dmx.index_streams(ts.path.parent)
 
-    std = std_model
+    pafs = {pid: PAF(paf) for pid, paf in dmx.get_pafs().items()}
+    decs = dict()
+    for pid in pafs:
+        decoder = next(filter(lambda d: d.suitable_for(pid), SupportedDecoders), None)
+        assert decoder is not None
+        decs[pid] = decoder(paf.stream_type)
+
 
 #%%
 # class Mux:
