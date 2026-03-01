@@ -23,10 +23,10 @@ from enum import IntEnum
 from fractions import Fraction
 from pathlib import Path
 
-from typing import Iterable, Generator
+from typing import Generator
 
 from bitstream import BitReader, remove_emulation_prevention as remove_emulation_prevention
-from common import Parser, AccessUnit
+from common import Parser, AccessUnit, Indexer
 from mpeg_common import MPEGClock, split_annexb_and_yield_nal
 
 class NALType(IntEnum):
@@ -241,6 +241,7 @@ def parse_sei(rbsp: bytes, sps: dict[str, int]) -> tuple[int, dict[str, int]]:
 
         br.bitpos = payload_end
     return payload_type, results
+####
 
 #%% Primary parser and datastructure
 @dataclass
@@ -319,62 +320,66 @@ class AVCParser(Parser):
 ####
 
 #%%
-def generate_pts_dts_from(
-        access_units: Iterable[AVCAccessUnit],
-        first_pts: int = MPEGClock.PTS,
-    ) -> Generator[tuple[int, int], None, None]:
-    """
-    Generate DTS/PTS pair from a list or generator of access units
-    
-    Caller is responsible for discarding the DTS if it is equal to the PTS.
+class AVCIndexer(Indexer):
+    _parser = AVCParser
+    def __init__(self, input_file: Path | str, index_file: Path | str):
+        super().__init__(input_file, index_file)
+        
+    @staticmethod
+    def get_pts_dts_of_access_unit(
+            first_pts: int = MPEGClock.PTS,
+        ) -> Generator[tuple[int, int], None, None]:
+        """
+        Generate DTS/PTS pair from a list or generator of access units
+        
+        Caller is responsible for discarding the DTS if it is equal to the PTS.
 
-    Parameters
-    ----------
-    access_units : Iterable[AVCAccessUnit]
-        Iterable of Access Units.
-    first_pts : int, optional
-        First PTS value
+        Parameters
+        ----------
+        access_units : Iterable[AVCAccessUnit]
+            Iterable of Access Units.
+        first_pts : int, optional
+            First PTS value
 
-    Yields
-    ------
-    tuple[int, int]
-        (dts, pts) pair, 33-bit each
-    """
-    xts_max = (1 << 33) - 1
-    f_to_mpegts33 = lambda x, y: (int(x) & xts_max, int(y) & xts_max)
-    
-    au_iterator = iter(access_units)
-    first_au = next(au_iterator)
-    
-    field_duration = MPEGTSClock.PTS * Fraction(
-        first_au.sequence_parameter_set['num_units_in_tick'],
-        first_au.sequence_parameter_set['time_scale'])
+        Yields
+        ------
+        tuple[int, int]
+            (dts, pts) pair
+        """
+        f_cast = lambda x, y: (int(x), int(y))
+        
+        au = yield
+        
+        field_duration = MPEGClock.PTS * Fraction(
+            au.sequence_parameter_set['num_units_in_tick'],
+            au.sequence_parameter_set['time_scale'])
 
-    picture_timing = first_au.sei[SEI.PictureTiming]
-    pts = first_pts
-    dts = pts - picture_timing['dpb_output_delay'] * field_duration
-    
-    last_buffering_sei_ts = first_pts - 2*field_duration
-    
-    # is the DTS further back in comparison to the default 2-frame one?
-    if (dts_shift := (last_buffering_sei_ts - dts)) > 0:
-        # (not how we should detect b-pyramid, but whatever)
-        print(f"b-pyramid detected: shift DTS by {dts_shift/field_duration} frames.")
-        last_buffering_sei_ts -= dts_shift
-    
-    yield f_to_mpegts33(dts, pts)
-    
-    if dts <= 0 or last_buffering_sei_ts <= 0:
-        raise RuntimeError("First PTS offset is unsufficient.")
-
-    for n, au in enumerate(au_iterator, 1):
         picture_timing = au.sei[SEI.PictureTiming]
-        dts = last_buffering_sei_ts + (picture_timing['cpb_removal_delay'] * field_duration)
-        pts = dts + (picture_timing['dpb_output_delay'] * field_duration)
-             
-        if SEI.BufferingPeriod in au.sei:
-            last_buffering_sei_ts = dts
+        pts = first_pts
+        dts = pts - picture_timing['dpb_output_delay'] * field_duration
+        
+        last_buffering_sei_ts = first_pts - 2*field_duration
+        
+        # is the DTS further back in comparison to the default 2-frame one?
+        if (dts_shift := (last_buffering_sei_ts - dts)) > 0:
+            # (not how we should detect b-pyramid, but whatever)
+            print(f"b-pyramid detected: shift DTS by {dts_shift/field_duration} frames.")
+            last_buffering_sei_ts -= dts_shift
+                
+        if dts <= 0 or last_buffering_sei_ts <= 0:
+            raise RuntimeError("First PTS offset is unsufficient.")
+        
+        while True:
+            au = yield f_cast(dts, pts)
+            if au is None:
+                break
             
-        yield f_to_mpegts33(dts, pts)
-    return
+            picture_timing = au.sei[SEI.PictureTiming]
+            dts = last_buffering_sei_ts + (picture_timing['cpb_removal_delay'] * field_duration)
+            pts = dts + (picture_timing['dpb_output_delay'] * field_duration)
+                 
+            if SEI.BufferingPeriod in au.sei:
+                last_buffering_sei_ts = dts
+        return
+    ####
 ####
