@@ -18,8 +18,8 @@ You should have received a copy of the GNU General Public License
 along with SUPer.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from common import AccessUnit, Parser, Indexer
-from mpeg_common import TSPair, MPEGClock
+from common import Parser, Indexer
+from utils import TSPair, MPEGClock, AccessUnit
 from dataclasses import dataclass
 from pathlib import Path
 from struct import unpack
@@ -35,10 +35,7 @@ class HDMVGraphicParser(Parser):
         assert (fp := Path(fp)).exists()
         self._fp = fp
 
-    def parse(self) -> Generator[GraphicSegment, None, None]:
-        yield from map(lambda x: x[0], self.parse_with_timestamps())
-    
-    def parse_with_timestamps(self) -> Generator[tuple[GraphicSegment, TSPair], None, None]:
+    def parse(self) -> Generator[tuple[GraphicSegment, TSPair], None, None]:
         with open(self._fp, 'rb') as f:
             buff = f.read(1 << 20)
             while len(buff):
@@ -59,21 +56,15 @@ class HDMVGraphicParser(Parser):
 
 class HDMVGraphicIndexer(Indexer):
     _parser = HDMVGraphicParser
-    def get_pts_dts_of_access_unit(self, first_pts = MPEGClock.PTS) -> Generator[TSPair, TSPair, None]:
+
+    def get_pts_dts_of_access_unit(self,
+       first_pts = MPEGClock.PTS
+    ) -> Generator[TSPair, tuple[GraphicSegment, TSPair], None]:
         mask = ((1 << 32) - 1)
-        tspair = yield
+        _, tspair = yield
         while tspair is not None:
             tspair.pts = (tspair.pts + first_pts) & mask
             tspair.dts = (tspair.dts + first_pts) & mask
-            tspair = yield tspair
-
-    def index(self):
-        graphicstream_parser = self.__class__._parser(self.input_file)
-        for (segment, tspair) in graphicstream_parser.parse_with_timestamps():
-            pes_size = self.__class__.estimate_pes_packet_size(segment, tspair)
-            tp_count = self.__class__.estimate_tp_count_for_pes_packet(pes_size)
-
-
-        
-                
-                
+            _, tspair = yield tspair
+    ####
+####

@@ -21,13 +21,9 @@ along with BluFlow.  If not, see <http://www.gnu.org/licenses/>.
 from abc import abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generator, Iterable
+from typing import Generator, Any
 
-from mpeg_common import MPEGClock, TSPair
-
-@dataclass
-class AccessUnit:
-    size: int = 0
+from utils import MPEGClock, TSPair, AccessUnit, ProspectivePESPacket
 
 #%%
 class Parser:
@@ -45,33 +41,6 @@ class Parser:
     @abstractmethod
     def parse(self, *args, **kwargs):
         raise NotImplementedError
-
-@dataclass
-class ProspectivePESPacket:
-    header_size: int
-    payload_size: int
-    _packetization_plan: list[int] | None = None
-    
-    def set_transport_packetization_plan(self, plan: list[int]) -> None:
-        """
-        Let the user specify how each element within the access unit shall be
-        packetized. I.e a section may be conveyed with transport_priority=1,
-        requiring adaptation field stuffing for isolation.
-        """
-        if not sum(plan) == self.payload_size + self.header_size:
-            raise ValueError("Packet plan cannot store PES payload.")
-        if max(plan) > 184:
-            raise ValueError("At least one packet does not fit in a Transport Packet.")
-        self._packetization_plan = plan
-    
-    @property
-    def size(self) -> int:
-        return self.header_size + self.payload_size
-    
-    def get_tp_count(self) -> int:
-        if self._packetization_plan is not None:
-            return len(self._packetization_plan)
-        return (self.size + 183) // 184
     
 class Indexer:
     _parser: Parser | None = None
@@ -92,11 +61,10 @@ class Indexer:
         self.index_file = index_file
 
     @classmethod
-    def estimate_pes_packet_size(cls, au: AccessUnit, ts_pair: TSPair) -> int:
+    def estimate_pes_packet(cls, au: AccessUnit, ts_pair: TSPair) -> int:
         """
         Helper to estimate the PES packet total size for the given access unit.
         """
-        
         # packet_start_code_prefix + stream_id + PES_packet_length
         header_size = 6
         # Classical PES header
@@ -111,15 +79,22 @@ class Indexer:
         return ProspectivePESPacket(header_size, au.size)
         
     @classmethod
-    def estimate_tp_count_for_pes_packet(cls, pes_packet_size: int) -> int:
+    def retrieve_access_unit(cls, packet: Any) -> AccessUnit:
+        if isinstance(packet, AccessUnit):
+            return packet
+        return next(filter(lambda e: isinstance(e, AccessUnit), packet))
+    
+    @classmethod
+    def estimate_tp_count_for_pes_packet(cls, pes_packet: ProspectivePESPacket) -> int:
         #188 - 4 for TS header overhead
-        return (pes_packet_size + 183) // 184
+        return (pes_packet.size + 183) // 184
 
-    def get_pts_dts_of_access_unit(self,
+    @staticmethod
+    def get_pts_dts_of_access_unit(
            first_pts = MPEGClock.PTS,
     ) -> Generator[TSPair, AccessUnit, None]:
         """
-        Generator of PTS DTS given the incoming access unit
+        Basic indexer
         """
         au = yield
         pts = first_pts
@@ -128,20 +103,19 @@ class Indexer:
             pts += 1
     ####
 
-    def index(self,
-      pts_dts_generator: Generator[TSPair, AccessUnit, None] | None = None,
-    ) -> None:
+    def index(self, first_pts: int = MPEGClock.PTS) -> None:
         """
-        Index the input file given a pts_dts_generator of (pts, dts) pairs. If none is provided
-        the indexer simply index based on the counter of access unit.
+        Index the input file given the class pts_dts generator.
         """
-        if pts_dts_generator is None:
-            pts_dts_generator = self.get_pts_dts_of_access_unit()
-
+        pts_dts_generator = self.__class__.get_pts_dts_of_access_unit(first_pts)
+        lsr = []
         next(pts_dts_generator)
-        for au in self.__class__._parser(self.input_file):
-            pair = pts_dts_generator.send(au)
-            pes_size = self.__class__.estimate_pes_packet_size(au, pair)
-            tp_count = self.__class__.estimate_tp_count_for_pes_packet(pes_size)
+        for packet in self.__class__._parser(self.input_file):
+            pair = pts_dts_generator.send(packet)
+            au = self.__class__.retrieve_access_unit(packet)
+            likely_pes = self.__class__.estimate_pes_packet(au, pair)
+            tp_count = self.__class__.estimate_tp_count_for_pes_packet(likely_pes)
+            lsr.append((pair, likely_pes, tp_count))
         pts_dts_generator.close()
+        return lsr
 ####
