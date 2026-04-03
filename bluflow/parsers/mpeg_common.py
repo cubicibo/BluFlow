@@ -29,6 +29,7 @@ class SEI(IntEnum):
     UserDataUnregistered = 5
     RecoveryPoint = 6
     DecRefPicMarking = 7
+    ScalableNesting = 37
 
 def yield_sei_units(rbsp: bytes) -> Generator[tuple[SEI | int, BitReader], None, None]:
     """

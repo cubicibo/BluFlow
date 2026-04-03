@@ -33,6 +33,10 @@ class _Descriptor:
     def _set_descriptor_length(b: bytearray) -> None:
         b[1] = len(b) - 2
 
+    @abstractmethod
+    def __bytes__(self) -> bytes:
+        return self
+
 class TSDecriptor(_Descriptor):
     @staticmethod
     def _convert_rate(rate: int | None, ceiling: bool = True) -> int:
@@ -42,18 +46,18 @@ class TSDecriptor(_Descriptor):
             assert rate_in_unit <= _mask, "partial TS descriptor rate param overflow"
             return rate_in_unit & _mask
         return _mask
-        
+
     def partial_transport_stream_descriptor_to_bytes(self) -> bytes:
         cls = __class__
         p = self.parameters
         data = bytearray([0x63, 0x00])
-        
+
         peak_rate_in_units = cls._convert_rate(p['peak_rate'], ceiling=True)
         data += struct.pack(">I", peak_rate_in_units)[1:]
-        
+
         min_overall_smoothing_rate = cls._convert_rate(p.get('minimum_overall_smoothing_rate', None), ceiling=False)
         data += struct.pack(">I", min_overall_smoothing_rate)[1:]
-        
+
         maximum_overall_smoothing_buffer = p.get('maximum_overall_smoothing_buffer', 0x3FFF)
         assert maximum_overall_smoothing_buffer <= 0x3FFF, "maximum_overall_smoothing_buffer overflow"
         data += struct.pack(">H", maximum_overall_smoothing_buffer)
@@ -71,15 +75,15 @@ class HDMVDescriptor(_Descriptor):
     def video_registration_descriptor_to_bytes(self) -> bytes:
         p = self.parameters
         data = bytearray([0x05 0x08, 0x48, 0x44, 0x4D, 0x56, 0xFF])
-        
+
         data.append()
-        
+
     def registration_descriptor_to_bytes(self) -> bytes:
         return bytes([0x05, 0x04, 0x48, 0x44, 0x4D, 0x56])
-        
+
     def lpcm_audio_registration_descriptor_to_bytes(self) -> bytes:
         ...
-        
+
     def copy_control_descriptor_to_bytes(self) -> bytes:
         # ffmpeg puts 0xfc??
         return bytes([0x88, 0x04, 0x0F, 0xFF, 0xFC, 0xFC])
@@ -87,12 +91,12 @@ class HDMVDescriptor(_Descriptor):
 class HEVCDescriptor(_Descriptor):
     def video_descriptor_to_bytes(self) -> bytes:
         p = self.parameters
-        
+
         data = bytearray([0, 0])
         data.append(((p.get('profile_space') & 0b11) << 6) |
                     ((p.get('tier_flag') & 0b1) << 5) |
                     ((p.get('profile_idc') & 0x1F)))
-        
+
         data += struct.pack(">I", p.get('profile_compatibility_indication'))
         data.append(((p.get('progressive_source_flag') & 1) << 7) |
                     ((p.get('interlaced_source_flag')  & 1) << 6) |
@@ -105,15 +109,15 @@ class HEVCDescriptor(_Descriptor):
                     ((p.get('HEVC_24hr_picture_present_flag') & 1) << 5) |
                     ((p.get('sub_pic_hrd_params_not_present_flag') & 1) << 4) |
                     ((p.get('HDR_WCG_idc') & 0b11)))
-        
+
         if p.get('temporal_layer_subset_flag', 0):
             temporal_min = p.get('temporal_id_min') & 0x7
             temporal_max = p.get('temporal_id_max') & 0x7
             data += bytes([temporal_min << 5, temporal_max << 5])
-            
+
         __class__._set_descriptor_length(data)
         return bytes(data)
-    
+
 class AVCDescriptor(_Descriptor):
     def timing_hrd_descriptor_to_bytes(self) -> bytes:
         p = self.parameters
@@ -131,7 +135,7 @@ class AVCDescriptor(_Descriptor):
         flags = p.get('hrd_management_valid_flag', 0) << 7
         flags|= p.get('picture_and_timing_info_present', 1)
         data.append(flags)
-        
+
         uses_90khz_tb = p.get('90kHz_flag', 0)
         data.append(uses_90khz_tb << 7)
         if not uses_90khz_tb:
@@ -139,26 +143,26 @@ class AVCDescriptor(_Descriptor):
             data += struct.pack(">I", NoK.numerator)
             data += struct.pack(">I", NoK.denominator)
         data += struct.pack(">I", p.get('num_units_in_tick'))
-        
+
         flags = p.get('fixed_frame_rate_flag', 1) << 7
         flags|= p.get("temporal_poc_flag", 0) << 6
         flags|= p.get("picture_to_display_conversion_flag", 0) << 5
-        
+
         data.append(flags)
         __class__._set_descriptor_length(data)
         return bytes(data)
-        
+
     def video_descriptor_to_bytes(self) -> bytes:
         p = self.parameters
         data = bytearray([40, 4, 0, 0, 0, 0])
-        
+
         data[5] |= p.get('Frame_Packing_SEI_not_present_flag', 1) << 5
         data[5] |= p.get('AVC_24_hour_picture_flag', 0) << 6
         data[5] |= p.get('AVC_still_present', 0) << 7
-        
+
         data[4] = p['level_idc'] # must be specified
         data[3] = p.get('constraint_set_byte', 0)
         data[2] = p['profile_idc']
-        
+
         __class__._set_descriptor_length(data)
         return bytes(data)

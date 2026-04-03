@@ -18,7 +18,8 @@ You should have received a copy of the GNU General Public License
 along with BluFlow.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from generics import standard_stream_property, PTS_DTS_flags, exist_if, standard_stream_offset
+from consts import PTS_DTS_flags
+from generics import standard_stream_property, exist_if, standard_stream_offset
 
 class PESPacket:
     __slots__ = 'data'

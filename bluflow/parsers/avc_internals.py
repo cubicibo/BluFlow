@@ -22,6 +22,13 @@ from enum import IntEnum
 from bitstream import BitReader
 
 class NALType(IntEnum):
+    MVC_AUD = 24
+    SLICE_EXT_MVC = 21
+    SLICE_EXT = 20
+    SLICE_AUX_NP = 19
+    SUBSET_SPS = 15
+    PREFIX = 14
+    SPS_EXT = 13
     FILLER = 12
     EOSTR = 11
     EOSEQ = 10
@@ -33,6 +40,7 @@ class NALType(IntEnum):
     Not_IDR=1
     unk = 0
 
+    @classmethod
     def _missing_(cls, v: ...) -> 'NALType':
         return cls(0)
 

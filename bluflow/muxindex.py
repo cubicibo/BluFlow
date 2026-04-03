@@ -24,11 +24,12 @@ from struct import unpack, pack
 
 from enum import IntFlag, IntEnum, auto as eauto
 from parsers.utils import ProspectivePESPacket, TSPair
+from utils.hash import hash_asset
 
 class PesIndexFileType:
     VIDEO = eauto()
     AUDIO = eauto()
-    
+
 
 class PacketAttributeFlags(IntFlag):
     DTS_present = eauto() # must be 0b01 to be aligned to H.222
@@ -47,7 +48,7 @@ class VariableLength:
             bstr.append(byte)
         bstr[-1] |= 0x80
         return bytes(bstr)
-    
+
     #%%
     @staticmethod
     def decode(bstr: bytes) -> tuple[int, int]:
@@ -68,15 +69,15 @@ class PacketAttributeFields:
     def __init__(self, tspair: TSPair, pes_packet_meta: ProspectivePESPacket) -> None:
         self.tspair = tspair
         self.pes_packet_meta = pes_packet_meta
-        
+
     def to_bytes(self) -> bytes:
         flags = self.tspair.get_pts_dts_flag()
 
         bstring = bytearray([0])
-        
+
         bstring += VariableLength.encode(self.pes_packet_meta.header_size)
         bstring += VariableLength.encode(self.pes_packet_meta.payload_size)
-        
+
         if flags & PacketAttributeFlags.PTS_present:
             bstring += pack(">Q", self.tspair.pts)[3:]
             if flags & PacketAttributeFlags.DTS_present:
@@ -88,7 +89,7 @@ class PacketAttributeFields:
         # PES packet metadata is always present
         bstring[0] = flags
         return VariableLength.encode(len(bstring)) + bstring
-            
+
     @classmethod
     def from_bytes(cls, data: bytes) -> 'PacketAttributeFields':
         size, offset = VariableLength.decode(data)
@@ -96,7 +97,7 @@ class PacketAttributeFields:
             raise BufferError("Not enough bytes in data.")
         flags = data[offset]
         offset += 1
-        
+
         # PES header and data size always stored
         pes_header_size, n = VariableLength.decode(data[offset:])
         offset += n
@@ -118,18 +119,27 @@ class PacketAttributeFields:
             tsp = TSPair(pts, dts)
         else:
             raise RuntimeError("PES packets must have a PTS")
-        
+
         if flags & PacketAttributeFlags.TP_plan:
             num_tp_packets, n = VariableLength.decode(data[offset:])
             offset += n
             hpp.set_tp_plan(list(data[offset:offset + num_tp_packets]))
-            
         return tsp, hpp
-        
-            
-class PesIndexFile:
-    def __init__(self, index_file: Path | str, stream_type: int) -> None:
-        index_file = Path(index_file)
-        if not index_file.exists():
-            raise IOError("Index file does not exist.")
-        self.index_file = Path(index_file)
+
+
+class EsIndex:
+    def __init__(self, stream_type: int, ) -> None:
+        self.stream_type = stream_type
+        self.prospective_packets = []
+
+    def write_to_file(self, fp: Path | str) -> None:
+        fp = Path(fp)
+        assert fp.parent.exists()
+
+    @classmethod
+    def from_asset(cls, asset_file: Path | str) -> 'EsIndex':
+        ...
+
+    @classmethod
+    def from_index_file(cls, index_file: Path | str) -> 'EsIndex':
+        ...

@@ -232,7 +232,7 @@ def parse_vui_parameters(
     if vui["video_signal_type_present_flag"]:
         vui["video_format"] = bs.read_bits(3)
         vui["video_full_range_flag"] = bs.read_bit()
-        
+
         vui["colour_description_present_flag"] = bs.read_bit()
         if vui["colour_description_present_flag"]:
             vui["colour_primaries"] = bs.read_bits(8)
@@ -259,11 +259,11 @@ def parse_vui_parameters(
     if vui["vui_timing_info_present_flag"]:
         vui["vui_num_units_in_tick"] = bs.read_bits(32)
         vui["vui_time_scale"] = bs.read_bits(32)
-        
+
         vui["vui_poc_proportional_to_timing_flag"] = bs.read_bit()
         if vui["vui_poc_proportional_to_timing_flag"]:
             vui["vui_num_ticks_poc_diff_one_minus1"] = bs.read_ue()
-        
+
         vui["vui_hrd_parameters_present_flag"] = bs.read_bit()
         if vui["vui_hrd_parameters_present_flag"]:
             vui["hrd_parameters"] = parse_hrd_parameters(
@@ -282,7 +282,10 @@ def parse_vui_parameters(
         vui["log2_max_mv_length_vertical"] = bs.read_ue()
     return vui
 
-def parse_profile_tier_level(bs: BitReader, max_sub_layers_minus1: int) -> dict[str, Any]:
+def parse_profile_tier_level(
+        bs: BitReader,
+        max_sub_layers_minus1: int
+    ) -> dict[str, Any]:
     ptl = {}
     ptl["general_profile_space"] = bs.read_bits(2)
     ptl["general_tier_flag"] = bs.read_bit()

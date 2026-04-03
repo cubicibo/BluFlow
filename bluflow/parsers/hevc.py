@@ -38,11 +38,11 @@ def parse_buffering_period_sei(br: BitReader, sps: dict[str, int]) -> dict[str, 
     if not sps['vui']['vui_hrd_parameters_present_flag']:
         raise RuntimeError("Found Buffering SEI but HRD parameters missing.")
     hrd_params = sps['vui']['hrd_parameters'] # must be present
-    
+
     initial_cpb_removal_delay_length = 1 + hrd_params['initial_cpb_removal_delay_length_minus1']
     au_cpb_removal_delay_length = 1 + hrd_params['au_cpb_removal_delay_length_minus1']
     dpb_removal_delay_length = 1 + hrd_params['dpb_output_delay_length_minus1']
-    
+
     sub_pic_hrd_params_present_flag = hrd_params['sub_pic_hrd_params_present_flag']
     irap_cpb_params_present_flag = False if sub_pic_hrd_params_present_flag else br.read_bit()
 
@@ -52,10 +52,10 @@ def parse_buffering_period_sei(br: BitReader, sps: dict[str, int]) -> dict[str, 
     else:
         irap_cpb_params_present_flag = False
         buff_sei['cpb_delay_offset'] = buff_sei['dpb_delay_offset'] = 0
-    
+
     buff_sei['concatenation_flag'] = br.read_bit()
     buff_sei['au_cpb_removal_delay_delta_minus1'] = br.read_bits(au_cpb_removal_delay_length)
-    
+
     if hrd_params['nal_hrd_parameters_present_flag']:
         layers = []
         for layer_hrd_params in hrd_params['sub_layer_hrd_parameters']:
@@ -77,22 +77,22 @@ def parse_buffering_period_sei(br: BitReader, sps: dict[str, int]) -> dict[str, 
 
 def parse_picture_timing_sei(br: BitReader, sps: dict[str, int]) -> dict[str, int]:
     vui = sps['vui']
-    
+
     pic_timing = {}
     if vui['frame_field_info_present_flag']:
         pic_timing['pic_struct'] = br.read_bits(4)
         pic_timing['source_scan_type'] = br.read_bits(2)
         pic_timing['duplicate_flag'] = br.read_bits(1)
-        
+
     hrd_params = vui['hrd_parameters']
     CpbDpbDelaysPresentFlag = hrd_params['nal_hrd_parameters_present_flag'] or hrd_params['vcl_hrd_parameters_present_flag']
     if CpbDpbDelaysPresentFlag:
         au_cpb_removal_delay_length = 1 + hrd_params['au_cpb_removal_delay_length_minus1']
         dpb_output_delay_length = 1 + hrd_params['dpb_output_delay_length_minus1']
-        
+
         pic_timing['au_cpb_removal_delay_minus1'] = br.read_bits(au_cpb_removal_delay_length)
         pic_timing['pic_dpb_output_delay'] = br.read_bits(dpb_output_delay_length)
-        
+
         if vui['hrd_parameters']['sub_pic_hrd_params_present_flag']:
             raise NotImplementedError("Sub pic HRD not implemneted")   
     return pic_timing
@@ -129,7 +129,7 @@ class HEVCParser(Parser):
         vui = au.sequence_parameter_set.get('vui', {})
         if (hrd_parameters := vui.get('hrd_parameters', {})) is None:
             raise RuntimeError("No VUI or no HRD parameters.")
-        
+
         for sublayer_hrd in hrd_parameters['sub_layer_hrd_parameters']:
             if sublayer_hrd['fixed_pic_rate_general_flag'] is False:
                 raise RuntimeError("VFR HEVC stream detected, not allowed.")
@@ -140,7 +140,7 @@ class HEVCParser(Parser):
 
     def parse(self, parse_headers_once: bool = True) -> Generator[HEVCAccessUnit, None, None]:
         current_vps = current_sps = current_access_unit = None
-                
+
         with open(self._fp, 'rb') as fio:
             for nalu in split_annexb_and_yield_nal(fio, nal_requires_annexb_zero_byte):
                 # drop start_code to ease indexing
@@ -185,14 +185,13 @@ class HEVCIndexer(Indexer):
     _parser = HEVCParser
     def __init__(self, input_file: Path | str, index_file: Path | str):
         super().__init__(input_file, index_file)
-        
+
     @staticmethod
     def get_pts_dts_of_access_unit(
             first_pts: int = MPEGClock.PTS,
         ) -> Generator[tuple[int, int], None, None]:
         """
         Generate DTS/PTS pair from a list or generator of access units
-        
         Caller is responsible for discarding the DTS if it is equal to the PTS.
 
         Parameters
@@ -208,9 +207,9 @@ class HEVCIndexer(Indexer):
             (dts, pts) pair
         """
         f_cast = lambda x, y: (int(x), int(y))
-        
+
         au = yield
-        
+
         field_duration = MPEGClock.PTS * Fraction(
             au.sequence_parameter_set['num_units_in_tick'],
             au.sequence_parameter_set['time_scale'])
@@ -218,27 +217,27 @@ class HEVCIndexer(Indexer):
         picture_timing = au.sei[SEI.PictureTiming]
         pts = first_pts
         dts = pts - picture_timing['dpb_output_delay'] * field_duration
-        
+
         last_buffering_sei_ts = first_pts - 2*field_duration
-        
+
         # is the DTS further back in comparison to the default 2-frame one?
         if (dts_shift := (last_buffering_sei_ts - dts)) > 0:
             # (not how we should detect b-pyramid, but whatever)
             print(f"b-pyramid detected: shift DTS by {dts_shift/field_duration} frames.")
             last_buffering_sei_ts -= dts_shift
-                
+
         if dts <= 0 or last_buffering_sei_ts <= 0:
             raise RuntimeError("First PTS offset is unsufficient.")
-        
+
         while True:
             au = yield f_cast(dts, pts)
             if au is None:
                 break
-            
+
             picture_timing = au.sei[SEI.PictureTiming]
             dts = last_buffering_sei_ts + (picture_timing['cpb_removal_delay'] * field_duration)
             pts = dts + (picture_timing['dpb_output_delay'] * field_duration)
-                 
+
             if SEI.BufferingPeriod in au.sei:
                 last_buffering_sei_ts = dts
         return
