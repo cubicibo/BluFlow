@@ -1,8 +1,15 @@
-# TSar
-Set of tool to work with (parse) Transport Stream on Python.
+# BluFlow
+BluFlow is a Python package to manipulate Transport Streams (.TS, .M2TS), as well as common multimedia bitstreams like H.264, H.265 meant for broadcast or delivery.
 
 ## Status
-Work in progress.
+- H.264 and H.265 parsers and indexers are functionals; the bitstreams must carry HRD information.
+- Transport Stream (.TS and .M2TS) can be demuxed to elementary streams.
+- Packetized Elementary Stream (PES) can be processed per packet, and manipulated.
 
-## Transport Packet Attributes Files (PAF)
-PAF are per-PID index of a given transport stream file. They convey the timestamps (PTS, DTS) of the underlying PES packet, at a Transport Packet level.
+## Work in progress
+- Index files for muxing, partially implemented
+- Transport stream muxing
+- Audio codecs (AC3 will come first)
+
+## License
+The current project is under GPLv3.
