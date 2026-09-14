@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Copyright (C) 2024 cibo
-This file is part of TSar <https://github.com/cubicibo/TSar>.
+Copyright (C) 2026 cibo
+This file is part of BluFlow <https://github.com/cubicibo/BluFlow>.
 
-TSar is free software: you can redistribute it and/or modify
+BluFlow is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
-TSar is distributed in the hope that it will be useful,
+BluFlow is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with TSar.  If not, see <http://www.gnu.org/licenses/>.
+along with BluFlow.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import struct
 
-from generics import *
+from generics import OptionalBlock, exist_if, classproperty
 from consts import AdaptationFieldControl
 
 class ProgramClockReference(OptionalBlock):
@@ -262,30 +262,3 @@ class M2TSPacket(TSPacket):
     def copy_permission_indicator(self, cpi: int) -> None:
         self.tp_extra_header[0] = (self.tp_extra_header[0] & 0x3F) | ((cpi & 0b11) << 6)
 ####
-
-#%%
-# class ArbitraryPacket(TSPacket):
-#     __slots__ = ('header', 'tail')
-#     @property
-#     def size(cls):
-#         return self._size
-
-#     @size.setter
-#     def size(self, size: int) -> None:
-#         self._size = size
-
-#     @property
-#     def header_len(self):
-#         return self._header_len
-
-#     @header_len.setter
-#     def header_len(self, header_len: int) -> None:
-#         self._header_len = header_len
-
-#     def __call__(self, *args, **kwargs) -> ''
-
-#     def __init__(self, data: bytes):
-#         assert len(data) >= __class__.size
-#         super().__init__(data[__class__.header_len:super().size+__class__.header_len])
-#         self.header = data[:__class__.header_len]
-#         self.tail = data[super().size+__class__.header_len:__class__.size]

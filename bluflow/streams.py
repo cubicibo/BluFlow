@@ -24,6 +24,7 @@ import numpy as np
 from typing import Generator, Type, Optional, Callable
 from pathlib import Path
 
+#%%
 from tspacket import TSPacket, M2TSPacket
 from pespacket import PESPacket
 

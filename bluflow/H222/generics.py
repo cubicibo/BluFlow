@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 Copyright (C) 2024 cibo
-This file is part of TSar <https://github.com/cubicibo/TSar>.
+This file is part of BluFlow <https://github.com/cubicibo/BluFlow>.
 
-TSar is free software: you can redistribute it and/or modify
+BluFlow is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
@@ -15,13 +15,11 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with TSar.  If not, see <http://www.gnu.org/licenses/>.
+along with BluFlow.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 from typing import Optional, Any, Callable
 from functools import wraps
-
-from consts import *
 
 STREAM_IDS_NO_PES_PACKET_HEADER = [0xBC, 0xBE, 0xBF, 0xF0, 0xF1, 0xF2, 0xF8, 0xFF]
 
